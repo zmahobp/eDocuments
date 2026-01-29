@@ -1,30 +1,23 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
-using Microsoft.IdentityModel.Tokens;
+using Services;
 
 namespace Application.Controllers;
 [ApiController]
 [Route("[controller]")]
 public class RegularUserController : ControllerBase
 {
-    public DatabaseContext Context { get; set; }
-    public RegularUserController(DatabaseContext context)
+    private readonly IUserService _userService;
+
+    public RegularUserController(IUserService userService)
     {
-        Context = context;
+        _userService = userService;
     }
 
-    [HttpPost("RegisterRegularUser")]
+[HttpPost("RegisterRegularUser")]
     public async Task<ActionResult> RegisterRegularUser(IFormFile photo, [FromForm] string userJson)
     {
         var user = JsonConvert.DeserializeObject<RegularUser>(userJson);
-        var existingUser = await Context.RegularUsers.FirstOrDefaultAsync(u => u.Username == user.Username);
-        var support = await Context.UserSupports.FirstOrDefaultAsync(u => u.Username == user.Username);
-        if (existingUser != null || support != null)
-            return BadRequest("A user with this username already exists.");
 
         try
         {
@@ -41,11 +34,14 @@ public class RegularUserController : ControllerBase
             }
 
             user.OfficialPerson = false;
-            user.SetHash(user.Password);
             user.GenerateSecretKey();
-            await Context.RegularUsers.AddAsync(user);
-            await Context.SaveChangesAsync();
-            return Ok("User successfully registered.");
+            
+            var result = await _userService.RegisterUserAsync(user);
+            
+            if (result.Contains("successfully"))
+                return Ok(result);
+            else
+                return BadRequest(result);
         }
         catch (Exception e)
         {
@@ -53,60 +49,21 @@ public class RegularUserController : ControllerBase
         }
     }
 
-    [HttpPost("LoginUser")]
+[HttpPost("LoginUser")]
     public async Task<ActionResult> LoginUser([FromForm] string userJson)
     {
         var userInput = JsonConvert.DeserializeObject<RegularUser>(userJson);
-        var user = await Context.RegularUsers.FirstOrDefaultAsync(u => u.Username == userInput.Username);
+        var result = await _userService.LoginUserAsync(userInput.Username, userInput.Password);
 
-        if (user != null && user.Authenticate(userInput.Password))
+        if (!result.Contains("Invalid"))
         {
-            var token = GenerateJwtToken(user, userInput.Password);
-            return Ok(new { Token = token });
+            return Ok(new { Token = result });
         }
         else
         {
-            return BadRequest("Invalid username or password.");
+            return BadRequest(result);
         }
-    }
-
-    private string GenerateJwtToken(RegularUser user, string password)
-    {
-        var tokenHandler = new JwtSecurityTokenHandler();
-        var key = Encoding.ASCII.GetBytes(user.SecretKey);
-
-        var claims = new List<Claim>
-        {
-            new Claim("userId", user.ID.ToString()),
-            new Claim("firstName", user.FirstName),
-            new Claim("parentName", user.ParentName),
-            new Claim("jmbg", user.JMBG),
-            new Claim("lastName", user.LastName),
-            new Claim("username", user.Username),
-            new Claim("email", user.Email),
-            new Claim("city", user.City),
-            new Claim("municipality", user.Municipality),
-            new Claim("street", user.Street),
-            new Claim("number", user.Number),
-            new Claim("phone", user.Phone),
-            new Claim("birthDate", user.BirthDate.ToString("o")),
-            new Claim("birthPlace", user.BirthPlace),
-            new Claim("gender", user.Gender.ToString()),
-            new Claim("officialPerson", user.OfficialPerson.ToString()),
-            new Claim("accountType", "user"),
-            new Claim("password", password)
-        };
-
-        var tokenDescriptor = new SecurityTokenDescriptor
-        {
-            Subject = new ClaimsIdentity(claims),
-            Expires = DateTime.UtcNow.AddDays(7),
-            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
-        };
-
-        var token = tokenHandler.CreateToken(tokenDescriptor);
-        return tokenHandler.WriteToken(token);
-    }
+}
 
     [HttpPut("UpdateRegularUser")]
     public async Task<ActionResult> UpdateRegularUser(int id, RegularUser updatedUser)

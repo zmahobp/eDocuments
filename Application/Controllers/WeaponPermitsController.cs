@@ -1,0 +1,134 @@
+using Microsoft.AspNetCore.Mvc;
+using Services;
+using Models;
+
+namespace Application.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    public class WeaponPermitsController : ControllerBase
+    {
+        private readonly IDocumentService<WeaponPermit> _documentService;
+
+        public WeaponPermitsController(IDocumentService<WeaponPermit> documentService)
+        {
+            _documentService = documentService;
+        }
+
+        [HttpGet("{userId}")]
+        public async Task<ActionResult> GetWeaponPermit(int userId)
+        {
+            var document = await _documentService.GetDocumentAsync(userId);
+            if (document == null)
+                return BadRequest("Weapon permit not found for this user.");
+            
+            return Ok(document);
+        }
+
+        [HttpPost("{userId}")]
+        public async Task<ActionResult> AddWeaponPermit(int userId, [FromBody] WeaponPermit weaponPermit)
+        {
+            if (weaponPermit == null)
+                return BadRequest("Invalid data.");
+            
+            var result = await _documentService.AddDocumentAsync(userId, weaponPermit);
+            
+            if (result.Contains("successfully"))
+                return Ok(result);
+            else
+                return BadRequest(result);
+        }
+
+        [HttpPut("{userId}")]
+        public async Task<ActionResult> UpdateWeaponPermit(int userId, [FromBody] WeaponPermit weaponPermit)
+        {
+            if (weaponPermit == null)
+                return BadRequest("Invalid data.");
+            
+            var result = await _documentService.UpdateDocumentAsync(userId, weaponPermit);
+            
+            if (result.Contains("successfully"))
+                return Ok(result);
+            else
+                return BadRequest(result);
+        }
+
+        [HttpDelete("{userId}")]
+        public async Task<ActionResult> DeleteWeaponPermit(int userId)
+        {
+            var result = await _documentService.DeleteDocumentAsync(userId);
+            
+            if (result.Contains("successfully"))
+                return Ok(result);
+            else
+                return BadRequest(result);
+        }
+
+        [HttpGet("pdf/{userId}")]
+        public async Task<ActionResult> GeneratePdf(int userId)
+        {
+            var documentData = await _documentService.GetDocumentAsync(userId);
+            if (documentData == null)
+                return BadRequest("Weapon permit not found for this user.");
+            
+            var weaponPermit = new WeaponPermit
+            {
+                WeaponPermitNumber = documentData.WeaponPermitNumber,
+                WeaponTypes = documentData.WeaponTypes,
+                WeaponQuantity = documentData.WeaponQuantity,
+                WeaponTypeCount = documentData.WeaponTypeCount,
+                WeaponCaliber = documentData.WeaponCaliber,
+                UsageLocation = documentData.UsageLocation,
+                UsagePurpose = documentData.UsagePurpose,
+                IssueDate = documentData.IssueDate,
+                ExpirationDate = documentData.ExpiryDate,
+                IssuedBy = documentData.IssuedBy,
+                QRCode = documentData.QRCode,
+                User = new RegularUser
+                {
+                    JMBG = documentData.JMBG,
+                    FirstName = documentData.FirstName,
+                    ParentName = documentData.ParentName,
+                    LastName = documentData.LastName,
+                    City = documentData.City,
+                    Municipality = documentData.Municipality,
+                    Street = documentData.Street,
+                    HouseNumber = documentData.HouseNumber,
+                    BirthDate = documentData.BirthDate,
+                    BirthPlace = documentData.BirthPlace,
+                    Gender = documentData.Gender,
+                    Photo = documentData.Photo
+                }
+            };
+
+            try
+            {
+                var pdfBytes = await _documentService.GeneratePdfAsync(userId, weaponPermit);
+                return File(pdfBytes, "application/pdf", "WeaponPermit.pdf");
+            }
+            catch (Exception e)
+            {
+                return BadRequest(e.Message);
+            }
+        }
+
+        [HttpGet("qr/{userId}")]
+        public async Task<ActionResult> GenerateQrCode(int userId)
+        {
+            var documentData = await _documentService.GetDocumentAsync(userId);
+            if (documentData == null)
+                return BadRequest("Weapon permit not found for this user.");
+            
+            try
+            {
+                var weaponPermit = new WeaponPermit { QRCode = documentData.QRCode };
+                var qrBytes = await _documentService.GenerateQrCodeAsync(weaponPermit);
+                return File(qrBytes, "image/png");
+            }
+            catch (Exception e)
+            {
+                return BadRequest(e.Message);
+            }
+        }
+    }
+}

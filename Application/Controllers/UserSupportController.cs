@@ -1,39 +1,34 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
-using Microsoft.IdentityModel.Tokens;
+using Services;
 
 namespace Application.Controllers;
 [ApiController]
 [Route("[controller]")]
 public class UserSupportController : ControllerBase
 {
-    public DatabaseContext Context { get; set; }
-    public UserSupportController(DatabaseContext context)
+    private readonly IUserService _userService;
+
+    public UserSupportController(IUserService userService)
     {
-        Context = context;
+        _userService = userService;
     }
 
-    [HttpPost("CreateUserSupport")]
+[HttpPost("CreateUserSupport")]
     public async Task<ActionResult> CreateUserSupport([FromForm] string UserSupportJson)
     {
         try
         {
             var UserSupport = JsonConvert.DeserializeObject<UserSupport>(UserSupportJson);
-            var support = await Context.UserSupports.FirstOrDefaultAsync(u => u.Username == UserSupport.Username);
-            var user = await Context.RegularUsers.FirstOrDefaultAsync(u => u.Username == UserSupport.Username);
-            if (support != null || user != null)
-                return BadRequest("A user with this username already exists.");
-
             UserSupport.SetSupport();
-            UserSupport.SetHash();
             UserSupport.GenerateSecretKey();
-            await Context.UserSupports.AddAsync(UserSupport);
-            await Context.SaveChangesAsync();
-            return Ok("Support user account successfully registered.");
+            
+            var result = await _userService.RegisterSupportAsync(UserSupport);
+            
+            if (result.Contains("successfully"))
+                return Ok(result);
+            else
+                return BadRequest(result);
         }
         catch (Exception e)
         {
@@ -57,54 +52,21 @@ public class UserSupportController : ControllerBase
         }
     }
 
-    [HttpPost("LoginUserSupport")]
+[HttpPost("LoginUserSupport")]
     public async Task<ActionResult> LoginUserSupport([FromForm] string UserSupportJson)
     {
         var UserSupport = JsonConvert.DeserializeObject<UserSupport>(UserSupportJson);
-        var user = await Context.UserSupports.FirstOrDefaultAsync(u => u.Username == UserSupport.Username);
+        var result = await _userService.LoginSupportAsync(UserSupport.Username, UserSupport.Password);
 
-        if (user != null && user.Authenticate(UserSupport.Password))
+        if (!result.Contains("Invalid"))
         {
-            var token = GenerateJwtToken(user);
-            return Ok(new { Token = token });
+            return Ok(new { Token = result });
         }
         else
         {
-            var errorResponse = new
-            {
-                Message = "Invalid username or password.",
-                UserSupportJson = UserSupportJson,
-                User = user
-            };
-            return BadRequest(errorResponse);
+            return BadRequest(result);
         }
-    }
-
-    private string GenerateJwtToken(UserSupport user)
-    {
-        var tokenHandler = new JwtSecurityTokenHandler();
-        var key = Encoding.ASCII.GetBytes(user.SecretKey);
-
-        var claims = new List<Claim>
-        {
-            new Claim("accountType", "UserSupport"),
-            new Claim("userId", user.ID.ToString()),
-            new Claim("firstName", user.FirstName),
-            new Claim("lastName", user.LastName),
-            new Claim("username", user.Username),
-            new Claim("email", user.Email)
-        };
-
-        var tokenDescriptor = new SecurityTokenDescriptor
-        {
-            Subject = new ClaimsIdentity(claims),
-            Expires = DateTime.UtcNow.AddDays(7),
-            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
-        };
-
-        var token = tokenHandler.CreateToken(tokenDescriptor);
-        return tokenHandler.WriteToken(token);
-    }
+}
 
     [HttpGet("CheckOfficialPerson")]
     public async Task<ActionResult<bool>> CheckOfficialPerson(string jmbg)

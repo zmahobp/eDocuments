@@ -7,7 +7,7 @@ public class Passport : Document
     public string PassportNumber { get; set; }
 
     [ForeignKey("User")]
-    public int UserID { get; set; }
+    public int UserId { get; set; }
     
     [System.Text.Json.Serialization.JsonIgnore] 
     public RegularUser User { get; set; }

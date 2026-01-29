@@ -48,3 +48,22 @@ Thumbs.db
 *.mov
 *.wmv
 
+# Build folders
+bin/
+obj/
+Debug/
+Release/
+
+# Visual Studio
+.vs/
+
+# Environment variables
+.env
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
